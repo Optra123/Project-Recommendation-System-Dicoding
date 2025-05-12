@@ -107,38 +107,198 @@ Berikut penjelasan masing-masing variabel pada dataset:
 Beberapa langkah awal yang dilakukan untuk memahami data:
 
 - **Distribusi rating** menunjukkan bahwa sebagian besar pengguna memberikan rating antara 3.0 hingga 4.5.
-![Gambar tag paling populer](https://github.com/undagie/Dicoding-Recomendation-System/blob/main/img/tag.png?raw=true)
+![Gambar distribusi rating](https://github.com/Optra123/Project-Recommendation-System-Dicoding/blob/main/image/distribution_rating.png?raw=true)
 
 - **Genre populer** di dataset ini termasuk Drama, Comedy, dan Action.
+![Gambar genre terpopuler](https://github.com/Optra123/Project-Recommendation-System-Dicoding/blob/main/image/genre_populer.png?raw=true)
+
 - **Pola user-film** menunjukkan bahwa sebagian besar pengguna hanya menilai sebagian kecil dari total film, menunjukkan sifat sparsity yang umum dalam sistem rekomendasi.
+![Gambar persebaran rating film](https://github.com/Optra123/Project-Recommendation-System-Dicoding/blob/main/image/jumlah_rating_film.png?raw=true)
 
 Visualisasi dan pembersihan data akan dilakukan untuk memastikan kualitas dan konsistensi data sebelum masuk ke tahap pemodelan.
 
+---
 
-## Data Preparation
-Pada bagian ini Anda menerapkan dan menyebutkan teknik data preparation yang dilakukan. Teknik yang digunakan pada notebook dan laporan harus berurutan.
+## 📊 Data Preparation
 
-**Rubrik/Kriteria Tambahan (Opsional)**: 
-- Menjelaskan proses data preparation yang dilakukan
-- Menjelaskan alasan mengapa diperlukan tahapan data preparation tersebut.
+Setelah memahami karakteristik dataset MovieLens melalui tahap *Data Understanding*, langkah selanjutnya adalah mengolah dan menyusun data agar siap digunakan dalam proses pemodelan sistem rekomendasi. Tahap *Data Preparation* ini penting untuk memastikan bahwa model **Content-Based Filtering** dan **Collaborative Filtering** yang akan dibangun dapat memanfaatkan informasi yang tersedia secara optimal.
 
-## Modeling
-Tahapan ini membahas mengenai model sisten rekomendasi yang Anda buat untuk menyelesaikan permasalahan. Sajikan top-N recommendation sebagai output.
+### ✨ Tujuan Data Preparation
+Pada section ini, dilakukan dua proses utama:
 
-**Rubrik/Kriteria Tambahan (Opsional)**: 
-- Menyajikan dua solusi rekomendasi dengan algoritma yang berbeda.
-- Menjelaskan kelebihan dan kekurangan dari solusi/pendekatan yang dipilih.
+1. **Penggabungan Fitur Film**  
+   Informasi `genres` dan `tag` digabung menjadi satu fitur baru untuk menciptakan representasi film yang lebih komprehensif. Genre menunjukkan kategori film, sementara tag mengandung kata kunci yang diberikan oleh pengguna. Kombinasi keduanya memberikan konteks yang lebih kaya bagi sistem rekomendasi berbasis konten.
 
-## Evaluation
-Pada bagian ini Anda perlu menyebutkan metrik evaluasi yang digunakan. Kemudian, jelaskan hasil proyek berdasarkan metrik evaluasi tersebut.
+2. **Penanganan Missing Values**  
+   Karena tidak semua film memiliki tag, kolom `tag` pada hasil penggabungan dapat berisi nilai kosong (NaN). Untuk menghindari error dalam pemrosesan lebih lanjut, semua nilai NaN diisi dengan string kosong (`''`).
 
-Ingatlah, metrik evaluasi yang digunakan harus sesuai dengan konteks data, problem statement, dan solusi yang diinginkan.
+### 🔧 Langkah-Langkah Teknis
 
-**Rubrik/Kriteria Tambahan (Opsional)**: 
-- Menjelaskan formula metrik dan bagaimana metrik tersebut bekerja.
+```python
+# Menggabungkan semua tag menjadi satu string per movieId, dipisahkan dengan koma
+all_tags = tags.groupby('movieId')['tag'].apply(lambda tags: ', '.join(tags.astype(str))).reset_index()
+
+# Menggabungkan dataset movies dengan tags yang telah digabung
+movies_with_all_tags = pd.merge(movies, all_tags, on='movieId', how='left')
+
+# Mengisi nilai NaN pada kolom 'tag' dengan string kosong
+movies_with_all_tags['tag'] = movies_with_all_tags['tag'].fillna('')
+
+# Membuat kolom baru 'combined_features' dengan menggabungkan genre dan tag
+movies_with_all_tags['combined_features'] = movies_with_all_tags['genres'] + ', ' + movies_with_all_tags['tag']
+
+# Menampilkan 5 baris pertama dari hasil akhir
+movies_with_all_tags.head()
+```
+
+---
+
+### 🧠 Alasan Diperlukannya Tahapan Ini
+- Penggabungan fitur diperlukan agar model dapat menggunakan representasi teks yang mencerminkan baik kategori maupun deskripsi/tag dari film.
+
+- Penanganan missing values penting untuk mencegah error saat pembuatan vektor fitur atau saat proses training model, khususnya dalam pemodelan berbasis teks seperti TF-IDF atau CountVectorizer.
+
+---
+
+## 🤖 Modeling
+
+Setelah data film, rating, dan tag dipersiapkan pada tahap sebelumnya, kini masuk ke tahap utama yaitu membangun dan menguji sistem rekomendasi film. Dua pendekatan yang digunakan adalah **Content-Based Filtering** dan **Collaborative Filtering**. Masing-masing metode memiliki strategi yang berbeda dalam menyajikan rekomendasi yang relevan dan personal.
+
+---
+
+### 1️⃣ Content-Based Filtering
+
+Content-Based Filtering memberikan rekomendasi berdasarkan kemiripan antar item (film), dalam hal ini berdasarkan **genre** dan **tag** yang telah digabung menjadi `combined_features`.
+
+#### 🛠 Langkah-Langkah:
+
+- Mengubah teks `combined_features` menjadi vektor numerik menggunakan **TF-IDF Vectorizer**.
+- Mengukur kemiripan antar film menggunakan **Cosine Similarity**.
+- Mengembangkan fungsi rekomendasi berdasarkan film yang dipilih pengguna.
+
+#### ✅ Kelebihan:
+- Tidak bergantung pada rating pengguna lain.
+- Dapat memberikan rekomendasi bahkan untuk pengguna baru (cold-start user).
+
+#### ❌ Kekurangan:
+- Terbatas pada informasi konten yang tersedia.
+- Tidak mempertimbangkan preferensi pengguna secara eksplisit.
+
+
+### 2️⃣ Collaborative Filtering
+Collaborative Filtering merekomendasikan film berdasarkan perilaku pengguna lain dengan preferensi serupa. Dalam implementasi ini digunakan pendekatan **matrix factorization** berbasis **embedding** dan model **deep learning** sederhana.
+
+#### 🛠 Langkah-Langkah:
+- Mengkodekan `userId` dan `movieId` ke dalam integer index.
+- Membuat model neural network dengan lapisan embedding untuk user dan movie.
+- Melatih model untuk memprediksi rating dan menghasilkan rekomendasi.
+
+#### ✅ Kelebihan:
+-Memahami preferensi pengguna berdasarkan pola interaksi historis.
+-Bisa menangkap hubungan laten antara pengguna dan film.
+
+#### ❌ Kekurangan:
+-Rentan terhadap masalah cold-start (pengguna/film baru).
+-Memerlukan data interaksi yang cukup banyak untuk hasil optimal.
+
+
+### Output: Top-N Recommendations
+
+#### 🎯 Content-Based Filtering
+
+**Rekomendasi untuk film:** *Five Deadly Venoms (1978)*  
+**Genre:** Action  
+**Tag:** *(tidak tersedia)*  
+
+| No. | Judul Film | Genre | Similarity Score |
+|-----|------------|--------|------------------|
+| 1   | Fair Game (1995) | Action | 1.0 |
+| 2   | Under Siege 2: Dark Territory (1995) | Action | 1.0 |
+| 3   | Hunted, The (1995) | Action | 1.0 |
+| 4   | Bloodsport 2 (a.k.a. Bloodsport II: The Next Kumite) | Action | 1.0 |
+| 5   | Best of the Best 3: No Turning Back (1995) | Action | 1.0 |
+| 6   | Double Team (1997) | Action | 1.0 |
+| 7   | Steel (1997) | Action | 1.0 |
+| 8   | Knock Off (1998) | Action | 1.0 |
+| 9   | Avalanche (1978) | Action | 1.0 |
+| 10  | Aces: Iron Eagle III (1992) | Action | 1.0 |
+
+**Precision:** `1.0`
+
+---
+
+#### 👥 Collaborative Filtering
+
+**Rekomendasi untuk user:** `366`
+
+**Top 3 Film dengan Rating Tertinggi oleh Pengguna:**
+
+| No. | Judul Film | Genre | Rating |
+|-----|------------|--------|--------|
+| 1   | Reservoir Dogs (1992) | Crime \| Mystery \| Thriller | 5.0 |
+| 2   | Interstellar (2014) | Sci-Fi \| IMAX | 5.0 |
+| 3   | Fight Club (1999) | Action \| Crime \| Drama \| Thriller | 4.5 |
+
+**Rekomendasi Film:**
+
+| No. | Judul Film | Genre |
+|-----|------------|--------|
+| 1   | Shawshank Redemption, The (1994) | Crime \| Drama |
+| 2   | Paths of Glory (1957) | Drama \| War |
+| 3   | Ran (1985) | Drama \| War |
+| 4   | Celebration, The (Festen) (1998) | Drama |
+| 5   | Three Billboards Outside Ebbing, Missouri (2017) | Crime \| Drama |
+
+---
+
+
+## 🧪 Evaluation
+
+Pada proyek ini, sistem rekomendasi dievaluasi dengan dua pendekatan utama: **Content-Based Filtering** dan **Collaborative Filtering**. Masing-masing menggunakan metrik evaluasi yang sesuai dengan karakteristik dan tujuan model.
+
+### 🎯 Content-Based Filtering Evaluation
+
+Untuk pendekatan Content-Based Filtering, metrik yang digunakan adalah **Precision**. Precision mengukur sejauh mana film-film yang direkomendasikan relevan dengan film yang menjadi acuan (input).
+
+#### 📌 Formula Precision
+
+Precision = (Jumlah Rekomendasi yang Relevan) / (Jumlah Total Rekomendasi)
+
+Dalam konteks ini, suatu film dianggap relevan jika memiliki genre yang sama dengan film target.
+
+#### 🧾 Hasil Evaluasi
+
+Pengujian dilakukan dengan memilih film acak dari dataset, kemudian sistem memberikan 10 rekomendasi teratas. Berdasarkan hasil yang ditampilkan, seluruh rekomendasi memiliki genre yang sesuai, sehingga nilai **precision = 1.0**. Hal ini menunjukkan bahwa sistem berhasil merekomendasikan film yang secara konten sangat mirip dengan film acuan.
+
+---
+
+### 👥 Collaborative Filtering Evaluation
+
+Untuk pendekatan Collaborative Filtering, digunakan **Mean Absolute Error (MAE)** sebagai metrik evaluasi. MAE digunakan untuk mengukur seberapa besar rata-rata kesalahan antara rating yang diprediksi oleh model dengan rating sebenarnya yang diberikan oleh pengguna.
+
+#### 📌 Formula MAE
+
+MAE = (1/n) × Σ |rating_aktual - rating_prediksi|
+
+Keterangan:
+- rating_aktual: rating asli yang diberikan oleh pengguna
+- rating_prediksi: rating yang diprediksi oleh sistem
+- n: jumlah data yang diuji
+
+#### 🧾 Hasil Evaluasi
+
+Model dilatih menggunakan teknik embedding dengan arsitektur neural network dan regularisasi L2. Proses pelatihan menunjukkan perbaikan performa dari waktu ke waktu. Hasil evaluasi divisualisasikan dengan grafik **Training MAE** dan **Validation MAE** selama proses training. Grafik tersebut menunjukkan tren penurunan error yang stabil, menandakan bahwa model cukup berhasil dalam mempelajari pola rating pengguna terhadap film.
+
+---
+
+### 🔍 Kesimpulan Evaluasi
+
+- **Content-Based Filtering** menunjukkan hasil precision sempurna (1.0) pada pengujian tertentu, menandakan akurasi tinggi dalam hal kemiripan konten.
+- **Collaborative Filtering** menunjukkan performa yang baik berdasarkan MAE, dengan nilai error yang menurun selama training, mengindikasikan model mampu mempelajari preferensi pengguna secara efektif.
+
+Dengan demikian, kedua pendekatan memiliki kekuatan masing-masing, dan dapat digabungkan untuk membentuk sistem rekomendasi hybrid yang lebih akurat dan personal.
+
+
 
 **---Ini adalah bagian akhir laporan---**
 
-_Catatan:_
-- _Anda dapat menambahkan gambar, kode, atau tabel ke dalam laporan jika diperlukan. Temukan caranya pada contoh dokumen markdown di situs editor [Dillinger](https://dillinger.io/), [Github Guides: Mastering markdown](https://guides.github.com/features/mastering-markdown/), atau sumber lain di internet. Semangat!_
-- Jika terdapat penjelasan yang harus menyertakan code snippet, tuliskan dengan sewajarnya. Tidak perlu menuliskan keseluruhan kode project, cukup bagian yang ingin dijelaskan saja.
