@@ -78,24 +78,50 @@ Dataset ini berisi data rating, metadata film, dan tag pengguna terhadap film. S
 
 Berikut penjelasan masing-masing variabel pada dataset:
 
-### 🗂️ movies.csv
-- `movieId`: ID unik untuk setiap film.
-- `title`: Judul film beserta tahun rilis.
-- `genres`: Genre film yang dipisahkan dengan tanda pipe (`|`), seperti `Action|Adventure|Comedy`.
+### 📁 1. `ratings.csv`
 
-### 🗂️ ratings.csv
+**Jumlah Data:** 100836 baris, 4 kolom  
+**Kondisi Data:** Tidak terdapat missing value, duplikat sudah dibersihkan.
+
+**Deskripsi Fitur:**
 - `userId`: ID pengguna yang memberikan rating.
 - `movieId`: ID film yang diberi rating.
-- `rating`: Nilai rating dari pengguna terhadap film, dalam skala 0.5 sampai 5.0.
-- `timestamp`: Waktu rating diberikan dalam format UNIX time.
+- `rating`: Nilai rating dari pengguna terhadap film (skala 0.5 sampai 5.0).
+- `timestamp`: Waktu rating diberikan (UNIX time).
 
-### 🗂️ tags.csv
+---
+
+### 📁 2. `movies.csv`
+
+**Jumlah Data:** 9742 baris, 3 kolom  
+**Kondisi Data:** Tidak terdapat missing value, data cukup bersih.
+
+**Deskripsi Fitur:**
+- `movieId`: ID unik untuk setiap film.
+- `title`: Judul film beserta tahun rilis.
+- `genres`: Genre film yang dipisahkan dengan tanda pipe (`|`), misal `Action|Comedy`.
+
+---
+
+### 📁 3. `tags.csv`
+
+**Jumlah Data:** 3683 baris, 4 kolom  
+**Kondisi Data:** Tidak terdapat missing value, data bersifat subjektif dari pengguna.
+
+**Deskripsi Fitur:**
 - `userId`: ID pengguna yang memberikan tag.
 - `movieId`: ID film yang diberi tag.
 - `tag`: Kata kunci atau label yang diberikan ke film.
-- `timestamp`: Waktu tag diberikan dalam format UNIX time.
+- `timestamp`: Waktu tag diberikan (UNIX time).
 
-### 🗂️ links.csv
+---
+
+### 📁 4. `links.csv`
+
+**Jumlah Data:** 9742 baris, 3 kolom  
+**Kondisi Data:** Terdapat 8 nilai null pada kolom `tmdbId` (9734/9742 non-null).
+
+**Deskripsi Fitur:**
 - `movieId`: ID film di MovieLens.
 - `imdbId`: ID film di IMDb.
 - `tmdbId`: ID film di TMDb (The Movie Database).
@@ -121,183 +147,256 @@ Visualisasi dan pembersihan data akan dilakukan untuk memastikan kualitas dan ko
 
 ## 📊 Data Preparation
 
-Setelah memahami karakteristik dataset MovieLens melalui tahap *Data Understanding*, langkah selanjutnya adalah mengolah dan menyusun data agar siap digunakan dalam proses pemodelan sistem rekomendasi. Tahap *Data Preparation* ini penting untuk memastikan bahwa model **Content-Based Filtering** dan **Collaborative Filtering** yang akan dibangun dapat memanfaatkan informasi yang tersedia secara optimal.
+Setelah memahami karakteristik dataset MovieLens melalui tahap *Data Understanding*, langkah selanjutnya adalah mempersiapkan data agar siap digunakan dalam proses pemodelan sistem rekomendasi. Tahap *Data Preparation* ini penting untuk memastikan bahwa model **Content-Based Filtering** dan **Collaborative Filtering** dapat bekerja secara optimal.
+
+---
 
 ### ✨ Tujuan Data Preparation
-Pada section ini, dilakukan dua proses utama:
+
+Pada tahap ini dilakukan beberapa proses penting, yaitu:
 
 1. **Penggabungan Fitur Film**  
-   Informasi `genres` dan `tag` digabung menjadi satu fitur baru untuk menciptakan representasi film yang lebih komprehensif. Genre menunjukkan kategori film, sementara tag mengandung kata kunci yang diberikan oleh pengguna. Kombinasi keduanya memberikan konteks yang lebih kaya bagi sistem rekomendasi berbasis konten.
+   Informasi `genres` dan `tag` digabungkan untuk membentuk fitur baru bernama `combined_features`. Genre mencerminkan kategori film, sedangkan tag merupakan kata kunci yang diberikan pengguna. Kombinasi keduanya memberikan representasi yang lebih kaya bagi model Content-Based Filtering.
 
-2. **Penanganan Missing Values**  
-   Karena tidak semua film memiliki tag, kolom `tag` pada hasil penggabungan dapat berisi nilai kosong (NaN). Untuk menghindari error dalam pemrosesan lebih lanjut, semua nilai NaN diisi dengan string kosong (`''`).
+2. **Penanganan Nilai Kosong (Missing Values)**  
+   Beberapa film tidak memiliki tag, sehingga nilai pada kolom `tag` bisa kosong. Untuk mencegah error, nilai NaN diubah menjadi string kosong (`''`).
+
+3. **Ekstraksi Fitur dengan TF-IDF (Term Frequency-Inverse Document Frequency)**  
+   Setelah fitur teks `combined_features` terbentuk, dilakukan proses ekstraksi vektor fitur menggunakan metode TF-IDF. Teknik ini digunakan untuk mengukur pentingnya sebuah kata dalam dokumen relatif terhadap keseluruhan dokumen, dan hasilnya digunakan sebagai representasi vektor untuk setiap film dalam model Content-Based Filtering.
+
+4. **Persiapan Data untuk Collaborative Filtering**  
+   Untuk model Collaborative Filtering, dipersiapkan matriks interaksi pengguna dan item (user-item interaction matrix). Dataset `ratings.csv` digunakan dengan melakukan pemetaan ulang data user dan item menjadi format numerik, lalu digunakan sebagai input model rekomendasi berbasis interaksi.
+
+---
 
 ### 🔧 Langkah-Langkah Teknis
 
+#### Penggabungan Fitur Film
+
 ```python
-# Menggabungkan semua tag menjadi satu string per movieId, dipisahkan dengan koma
+# Menggabungkan semua tag menjadi satu string per movieId
 all_tags = tags.groupby('movieId')['tag'].apply(lambda tags: ', '.join(tags.astype(str))).reset_index()
 
-# Menggabungkan dataset movies dengan tags yang telah digabung
+# Menggabungkan dataset movies dengan tags
 movies_with_all_tags = pd.merge(movies, all_tags, on='movieId', how='left')
 
-# Mengisi nilai NaN pada kolom 'tag' dengan string kosong
+# Menangani nilai NaN
 movies_with_all_tags['tag'] = movies_with_all_tags['tag'].fillna('')
 
-# Membuat kolom baru 'combined_features' dengan menggabungkan genre dan tag
+# Membuat fitur gabungan genres dan tag
 movies_with_all_tags['combined_features'] = movies_with_all_tags['genres'] + ', ' + movies_with_all_tags['tag']
+```
 
-# Menampilkan 5 baris pertama dari hasil akhir
-movies_with_all_tags.head()
+#### Ekstraksi Fitur TF-IDF
+```python
+# Membuat objek TF-IDF Vectorizer
+tfidf = TfidfVectorizer(stop_words='english')
+
+# Transformasi fitur gabungan menjadi vektor TF-IDF
+tfidf_matrix = tfidf.fit_transform(movies_with_all_tags['combined_features'])
 ```
 
 ---
 
-### 🧠 Alasan Diperlukannya Tahapan Ini
-- Penggabungan fitur diperlukan agar model dapat menggunakan representasi teks yang mencerminkan baik kategori maupun deskripsi/tag dari film.
+### 🧠 Alasan Diperlukan Tahapan Ini
+- Penggabungan fitur memungkinkan sistem memahami lebih banyak informasi tentang film berdasarkan genre dan tag.
 
-- Penanganan missing values penting untuk mencegah error saat pembuatan vektor fitur atau saat proses training model, khususnya dalam pemodelan berbasis teks seperti TF-IDF atau CountVectorizer.
+- Penanganan missing values mencegah error saat proses ekstraksi fitur teks.
+
+- TF-IDF memberikan bobot pada kata berdasarkan seberapa penting kata tersebut dalam koleksi film — membantu sistem membedakan konten film secara tekstual.
+
+- Label Encoding dan pembentukan matriks interaksi penting untuk mengubah data ke format numerik yang diperlukan oleh algoritma Collaborative Filtering.
 
 ---
 
 ## 🤖 Modeling
 
-Setelah data film, rating, dan tag dipersiapkan pada tahap sebelumnya, kini masuk ke tahap utama yaitu membangun dan menguji sistem rekomendasi film. Dua pendekatan yang digunakan adalah **Content-Based Filtering** dan **Collaborative Filtering**. Masing-masing metode memiliki strategi yang berbeda dalam menyajikan rekomendasi yang relevan dan personal.
+Pada tahap ini, dibangun dua pendekatan sistem rekomendasi: **Content-Based Filtering** dan **Collaborative Filtering**. Masing-masing pendekatan memiliki cara kerja dan keunggulan tersendiri dalam menghasilkan rekomendasi film yang relevan.
 
 ---
 
 ### 1️⃣ Content-Based Filtering
 
-Content-Based Filtering memberikan rekomendasi berdasarkan kemiripan antar item (film), dalam hal ini berdasarkan **genre** dan **tag** yang telah digabung menjadi `combined_features`.
+Content-Based Filtering bekerja dengan membandingkan kemiripan antar item (dalam hal ini, film). Sistem ini memberikan rekomendasi berdasarkan fitur konten film, seperti `genre` dan `tag`, tanpa memperhatikan preferensi pengguna lain.
 
-#### 🛠 Langkah-Langkah:
-
-- Mengubah teks `combined_features` menjadi vektor numerik menggunakan **TF-IDF Vectorizer**.
-- Mengukur kemiripan antar film menggunakan **Cosine Similarity**.
-- Mengembangkan fungsi rekomendasi berdasarkan film yang dipilih pengguna.
+#### 🔍 Cara Kerja:
+1. **Representasi Teks:**  
+   Setiap film direpresentasikan sebagai sebuah dokumen teks hasil penggabungan fitur `genres` dan `tag`.  
+2. **Ekstraksi Fitur:**  
+   Digunakan metode **TF-IDF Vectorizer** untuk mengubah dokumen teks menjadi representasi numerik berbasis bobot kata. TF-IDF membantu memberi nilai tinggi pada kata yang unik dan informatif dalam konteks kumpulan dokumen.  
+3. **Menghitung Kemiripan:**  
+   Digunakan **Cosine Similarity** untuk mengukur kesamaan antar film berdasarkan vektor TF-IDF-nya.  
+4. **Rekomendasi Film:**  
+   Diberikan film input, sistem menampilkan daftar film dengan skor kemiripan tertinggi.
 
 #### ✅ Kelebihan:
-- Tidak bergantung pada rating pengguna lain.
-- Dapat memberikan rekomendasi bahkan untuk pengguna baru (cold-start user).
+- Dapat memberikan rekomendasi meskipun pengguna belum pernah memberikan rating (mengatasi cold-start pada user).
+- Tidak memerlukan data interaksi antar pengguna.
 
 #### ❌ Kekurangan:
-- Terbatas pada informasi konten yang tersedia.
-- Tidak mempertimbangkan preferensi pengguna secara eksplisit.
+- Rekomendasi terbatas pada fitur yang tersedia di film.
+- Tidak mempertimbangkan preferensi atau kebiasaan pengguna secara eksplisit.
 
+---
 
 ### 2️⃣ Collaborative Filtering
-Collaborative Filtering merekomendasikan film berdasarkan perilaku pengguna lain dengan preferensi serupa. Dalam implementasi ini digunakan pendekatan **matrix factorization** berbasis **embedding** dan model **deep learning** sederhana.
 
-#### 🛠 Langkah-Langkah:
-- Mengkodekan `userId` dan `movieId` ke dalam integer index.
-- Membuat model neural network dengan lapisan embedding untuk user dan movie.
-- Melatih model untuk memprediksi rating dan menghasilkan rekomendasi.
+Collaborative Filtering memanfaatkan informasi dari interaksi pengguna terhadap film, seperti rating, untuk menyarankan item yang disukai oleh pengguna lain dengan perilaku serupa. Pendekatan ini sangat efektif karena dapat menangkap pola ketertarikan pengguna secara tidak langsung.
+
+#### 🔍 Cara Kerja:
+1. **Matriks Interaksi:**  
+   Data rating pengguna diubah menjadi matriks interaksi pengguna-film.
+2. **Encoding ID:**  
+   `userId` dan `movieId` dikodekan ke indeks numerik menggunakan LabelEncoder.
+3. **Model Embedding:**  
+   Dibuat model neural network sederhana menggunakan dua layer **embedding** — satu untuk pengguna dan satu untuk film. Embedding ini bertugas memetakan user dan item ke dalam vektor berdimensi rendah.
+4. **Prediksi Rating:**  
+   Vektor embedding pengguna dan film dikombinasikan melalui operasi dot product untuk menghasilkan prediksi rating.
+5. **Rekomendasi Film:**  
+   Model dilatih untuk meminimalkan selisih antara prediksi dan rating asli. Setelah itu, sistem memberikan rekomendasi film dengan rating tertinggi yang belum pernah ditonton oleh pengguna.
 
 #### ✅ Kelebihan:
--Memahami preferensi pengguna berdasarkan pola interaksi historis.
--Bisa menangkap hubungan laten antara pengguna dan film.
+- Menyesuaikan rekomendasi berdasarkan preferensi pengguna.
+- Dapat menangkap relasi laten antara pengguna dan item yang tidak terlihat dari data eksplisit.
 
 #### ❌ Kekurangan:
--Rentan terhadap masalah cold-start (pengguna/film baru).
--Memerlukan data interaksi yang cukup banyak untuk hasil optimal.
+- Membutuhkan data interaksi yang cukup banyak.
+- Tidak dapat merekomendasikan item baru yang belum pernah dirating oleh pengguna mana pun (item cold-start).
 
+---
 
-### Output: Top-N Recommendations
+### 🎯 Hasil Rekomendasi
 
-#### 🎯 Content-Based Filtering
+#### 📌 Content-Based Filtering
 
-**Rekomendasi untuk film:** *Five Deadly Venoms (1978)*  
-**Genre:** Action  
-**Tag:** *(tidak tersedia)*  
+**Rekomendasi berdasarkan film input:** *Five Deadly Venoms (1978)*
 
-| No. | Judul Film | Genre | Similarity Score |
-|-----|------------|--------|------------------|
-| 1   | Fair Game (1995) | Action | 1.0 |
-| 2   | Under Siege 2: Dark Territory (1995) | Action | 1.0 |
-| 3   | Hunted, The (1995) | Action | 1.0 |
-| 4   | Bloodsport 2 (a.k.a. Bloodsport II: The Next Kumite) | Action | 1.0 |
-| 5   | Best of the Best 3: No Turning Back (1995) | Action | 1.0 |
-| 6   | Double Team (1997) | Action | 1.0 |
-| 7   | Steel (1997) | Action | 1.0 |
-| 8   | Knock Off (1998) | Action | 1.0 |
-| 9   | Avalanche (1978) | Action | 1.0 |
-| 10  | Aces: Iron Eagle III (1992) | Action | 1.0 |
+| No. | Judul Film                                                   | Genre   | Similarity Score |
+|-----|--------------------------------------------------------------|---------|------------------|
+| 1   | Fair Game (1995)                                             | Action  | 1.0              |
+| 2   | Under Siege 2: Dark Territory (1995)                         | Action  | 1.0              |
+| 3   | Hunted, The (1995)                                           | Action  | 1.0              |
+| 4   | Bloodsport 2 (a.k.a. Bloodsport II: The Next Kumite)        | Action  | 1.0              |
+| 5   | Best of the Best 3: No Turning Back (1995)                  | Action  | 1.0              |
 
 **Precision:** `1.0`
 
 ---
 
-#### 👥 Collaborative Filtering
+#### 👤 Collaborative Filtering
 
-**Rekomendasi untuk user:** `366`
+**Contoh pengguna:** `User 366`
 
-**Top 3 Film dengan Rating Tertinggi oleh Pengguna:**
+**Film dengan rating tertinggi oleh user:**
 
-| No. | Judul Film | Genre | Rating |
-|-----|------------|--------|--------|
-| 1   | Reservoir Dogs (1992) | Crime \| Mystery \| Thriller | 5.0 |
-| 2   | Interstellar (2014) | Sci-Fi \| IMAX | 5.0 |
-| 3   | Fight Club (1999) | Action \| Crime \| Drama \| Thriller | 4.5 |
+| No. | Judul Film                      | Genre                              | Rating |
+|-----|--------------------------------|-------------------------------------|--------|
+| 1   | Reservoir Dogs (1992)          | Crime \| Mystery \| Thriller        | 5.0    |
+| 2   | Interstellar (2014)            | Sci-Fi \| IMAX                      | 5.0    |
+| 3   | Fight Club (1999)              | Action \| Crime \| Drama \| Thriller| 4.5    |
 
-**Rekomendasi Film:**
+**Rekomendasi Film Berdasarkan Model:**
 
-| No. | Judul Film | Genre |
-|-----|------------|--------|
-| 1   | Shawshank Redemption, The (1994) | Crime \| Drama |
-| 2   | Paths of Glory (1957) | Drama \| War |
-| 3   | Ran (1985) | Drama \| War |
-| 4   | Celebration, The (Festen) (1998) | Drama |
+| No. | Judul Film                                    | Genre             |
+|-----|-----------------------------------------------|-------------------|
+| 1   | Shawshank Redemption, The (1994)              | Crime \| Drama    |
+| 2   | Paths of Glory (1957)                         | Drama \| War      |
+| 3   | Ran (1985)                                    | Drama \| War      |
+| 4   | Celebration, The (Festen) (1998)              | Drama             |
 | 5   | Three Billboards Outside Ebbing, Missouri (2017) | Crime \| Drama |
+
+---
+
+### 🧠 Kesimpulan Sementara
+
+Dua pendekatan yang digunakan memiliki karakteristik berbeda dan dapat saling melengkapi. Content-Based Filtering cocok untuk memberikan rekomendasi berbasis konten film yang telah dikenal, sedangkan Collaborative Filtering lebih efektif untuk mempersonalisasi rekomendasi berdasarkan pola perilaku pengguna.
 
 ---
 
 
 ## 🧪 Evaluation
 
-Pada proyek ini, sistem rekomendasi dievaluasi dengan dua pendekatan utama: **Content-Based Filtering** dan **Collaborative Filtering**. Masing-masing menggunakan metrik evaluasi yang sesuai dengan karakteristik dan tujuan model.
+Tahap evaluasi bertujuan untuk mengukur performa dari dua pendekatan sistem rekomendasi yang dikembangkan, yaitu **Content-Based Filtering** dan **Collaborative Filtering**, serta menilai sejauh mana solusi yang diterapkan menjawab kebutuhan pengguna dan tujuan bisnis yang telah ditetapkan.
+
+---
 
 ### 🎯 Content-Based Filtering Evaluation
 
-Untuk pendekatan Content-Based Filtering, metrik yang digunakan adalah **Precision**. Precision mengukur sejauh mana film-film yang direkomendasikan relevan dengan film yang menjadi acuan (input).
+Untuk pendekatan Content-Based Filtering, evaluasi dilakukan menggunakan metrik **Precision**, karena sistem merekomendasikan daftar film yang mirip dengan satu film input. 
 
 #### 📌 Formula Precision
 
 Precision = (Jumlah Rekomendasi yang Relevan) / (Jumlah Total Rekomendasi)
 
-Dalam konteks ini, suatu film dianggap relevan jika memiliki genre yang sama dengan film target.
+Sebuah film dianggap *relevan* jika memiliki genre yang sama dengan film acuan.
 
 #### 🧾 Hasil Evaluasi
 
-Pengujian dilakukan dengan memilih film acak dari dataset, kemudian sistem memberikan 10 rekomendasi teratas. Berdasarkan hasil yang ditampilkan, seluruh rekomendasi memiliki genre yang sesuai, sehingga nilai **precision = 1.0**. Hal ini menunjukkan bahwa sistem berhasil merekomendasikan film yang secara konten sangat mirip dengan film acuan.
+Sistem diuji dengan memilih film acak sebagai input dan mengeluarkan 10 film teratas berdasarkan skor kemiripan. Hasilnya:
+
+- Semua film yang direkomendasikan memiliki genre yang sama (Action).
+- Nilai precision = **1.0**
+
+➡️ Ini menunjukkan bahwa sistem mampu memberikan rekomendasi yang konsisten dan relevan secara konten terhadap film yang menjadi acuan.
 
 ---
 
 ### 👥 Collaborative Filtering Evaluation
 
-Untuk pendekatan Collaborative Filtering, digunakan **Mean Absolute Error (MAE)** sebagai metrik evaluasi. MAE digunakan untuk mengukur seberapa besar rata-rata kesalahan antara rating yang diprediksi oleh model dengan rating sebenarnya yang diberikan oleh pengguna.
+Untuk pendekatan Collaborative Filtering berbasis neural network (Neural Collaborative Filtering), digunakan metrik **Mean Absolute Error (MAE)** karena sistem berfungsi memprediksi rating dari pengguna terhadap film.
 
 #### 📌 Formula MAE
 
 MAE = (1/n) × Σ |rating_aktual - rating_prediksi|
 
-Keterangan:
-- rating_aktual: rating asli yang diberikan oleh pengguna
-- rating_prediksi: rating yang diprediksi oleh sistem
-- n: jumlah data yang diuji
+Dimana:
+- *rating_aktual*: rating asli dari pengguna.
+- *rating_prediksi*: rating yang dihasilkan oleh model.
+- *n*: jumlah data pengujian.
 
 #### 🧾 Hasil Evaluasi
 
-Model dilatih menggunakan teknik embedding dengan arsitektur neural network dan regularisasi L2. Proses pelatihan menunjukkan perbaikan performa dari waktu ke waktu. Hasil evaluasi divisualisasikan dengan grafik **Training MAE** dan **Validation MAE** selama proses training. Grafik tersebut menunjukkan tren penurunan error yang stabil, menandakan bahwa model cukup berhasil dalam mempelajari pola rating pengguna terhadap film.
+- Model dilatih menggunakan teknik embedding user dan item, diikuti oleh lapisan dense dengan regularisasi L2.
+- Kurva **training MAE** dan **validation MAE** menunjukkan tren penurunan yang stabil selama pelatihan.
+- Hasil akhir menunjukkan nilai **Validation MAE = 0.6461**, yang merupakan indikasi bahwa prediksi rating cukup dekat dengan nilai aktual dan kesalahan model relatif rendah.
+
+➡️ Sistem dapat memprediksi preferensi pengguna terhadap film secara akurat berdasarkan histori rating.
 
 ---
 
-### 🔍 Kesimpulan Evaluasi
+### 📌 Evaluasi Terhadap Business Understanding
 
-- **Content-Based Filtering** menunjukkan hasil precision sempurna (1.0) pada pengujian tertentu, menandakan akurasi tinggi dalam hal kemiripan konten.
-- **Collaborative Filtering** menunjukkan performa yang baik berdasarkan MAE, dengan nilai error yang menurun selama training, mengindikasikan model mampu mempelajari preferensi pengguna secara efektif.
+Mari kita hubungkan hasil evaluasi dengan komponen *Business Understanding*:
 
-Dengan demikian, kedua pendekatan memiliki kekuatan masing-masing, dan dapat digabungkan untuk membentuk sistem rekomendasi hybrid yang lebih akurat dan personal.
+| Problem Statement | Apakah Terjawab? | Penjelasan |
+|-------------------|------------------|------------|
+| 1. Pengguna kesulitan menemukan film yang sesuai | ✅ Ya | Content-Based Filtering memberikan rekomendasi berdasarkan genre dan tag, Collaborative Filtering menggunakan preferensi historis pengguna. |
+| 2. Rekomendasi non-personal mengurangi minat | ✅ Ya | Model Collaborative Filtering menghasilkan rekomendasi yang disesuaikan dengan interaksi pengguna tertentu. |
+| 3. Sistem sederhana gagal menangkap pola kompleks | ✅ Ya | Neural Collaborative Filtering mampu menangkap pola non-linear melalui arsitektur deep learning. |
 
+| Goals | Status | Penjelasan |
+|-------|--------|------------|
+| 1. Sistem sesuai minat pengguna | ✅ Tercapai | Sistem menghasilkan rekomendasi relevan baik dari sisi konten maupun histori pengguna. |
+| 2. Relevansi & personalisasi meningkat | ✅ Tercapai | Penggunaan dua pendekatan memberikan fleksibilitas dan akurasi lebih tinggi. |
+| 3. Implementasi pendekatan modern | ✅ Tercapai | Deep learning digunakan untuk menggantikan metode tradisional collaborative filtering. |
+
+| Solution Statement | Dampak | Penjelasan |
+|--------------------|--------|------------|
+| Content-Based Filtering | Positif | Mampu memberikan rekomendasi berdasarkan kemiripan konten secara tepat (precision = 1.0). |
+| Neural Collaborative Filtering | Positif | Memodelkan preferensi pengguna dengan MAE rendah dan menunjukkan pembelajaran stabil. |
+
+---
+
+### 🧠 Kesimpulan Evaluasi
+
+Kedua pendekatan rekomendasi menunjukkan performa yang baik dan saling melengkapi:
+
+- **Content-Based Filtering** efektif dalam konteks cold-start dan akurasi genre/tag.
+- **Collaborative Filtering** lebih personal dan menangkap preferensi pengguna secara eksplisit.
+
+Secara keseluruhan, sistem rekomendasi yang dibangun telah **menjawab seluruh pernyataan masalah, mencapai semua tujuan bisnis, dan memberikan dampak positif terhadap solusi yang dirancang**. Pendekatan hybrid yang menggabungkan kedua metode ini dapat menjadi strategi optimal untuk sistem rekomendasi skala industri.
+
+---
 
 
 **---Ini adalah bagian akhir laporan---**
